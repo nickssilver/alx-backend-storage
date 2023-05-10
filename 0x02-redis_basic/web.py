@@ -1,21 +1,29 @@
 #!/usr/bin/env python3
-"""
-create a web cach
-"""
+"""Module tracks how many times a particular URL was accessed"""
 import redis
 import requests
-rc = redis.Redis()
-count = 0
+from typing import Callable
+from functools import wraps
 
 
+def count(method: Callable):
+    '''track how many times a particular URL was accessed'''
+    r = redis.Redis()
+
+    @wraps(method)
+    def wrapper(url):
+        '''wrap the decorated function and return the wrapper'''
+        r.incr(f"count:{url}")
+        exp_count = r.get(f"cached:{url}")
+        if exp_count:
+            return exp_count.decode('utf-8')
+        html = method(url)
+        r.setex(f"cached:{url}", 10, html)
+        return html
+    return wrapper
+
+
+@count
 def get_page(url: str) -> str:
-    """ get a page and cach value"""
-    rc.set(f"cached:{url}", count)
-    resp = requests.get(url)
-    rc.incr(f"count:{url}")
-    rc.setex(f"cached:{url}", 10, rc.get(f"cached:{url}"))
-    return resp.text
-
-
-if __name__ == "__main__":
-    get_page('http://slowwly.robertomurray.co.uk')
+    '''uses the requests module to obtain the HTML content'''
+    return requests.get(url).text
